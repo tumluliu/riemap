@@ -58,7 +58,7 @@ export default function RegionPage() {
         }
     }
 
-    const navigateToPath = (urlPath: string[]) => {
+    const navigateToPath = async (urlPath: string[]) => {
         if (!urlPath || urlPath.length === 0) {
             // Root - show world or all regions
             const worldRegion = findRegionById(regions, 'world') ||
@@ -75,18 +75,31 @@ export default function RegionPage() {
 
         // Navigate to the last region in the path
         const targetRegionId = urlPath[urlPath.length - 1]
-        const region = findRegionById(regions, targetRegionId)
+        let region = findRegionById(regions, targetRegionId)
 
-        if (region) {
-            setCurrentRegion(region)
-            // Build breadcrumb path
-            const breadcrumb = buildBreadcrumbFromPath(urlPath)
-            setCurrentPath(breadcrumb)
-        } else {
-            // Region not found, redirect to home
-            console.error('Region not found:', targetRegionId)
-            router.push('/')
+        // If region not found in current hierarchy, fetch it directly from API
+        if (!region) {
+            try {
+                console.log(`Region ${targetRegionId} not found in hierarchy, fetching from API...`)
+                const fetchedRegion = await api.regions.get(targetRegionId)
+                setCurrentRegion(fetchedRegion)
+                // Build breadcrumb path
+                const breadcrumb = buildBreadcrumbFromPath(urlPath)
+                setCurrentPath(breadcrumb)
+                return
+            } catch (error) {
+                console.error('Failed to fetch region from API:', error)
+                // Region not found, redirect to home
+                console.error('Region not found:', targetRegionId)
+                router.push('/')
+                return
+            }
         }
+
+        setCurrentRegion(region)
+        // Build breadcrumb path
+        const breadcrumb = buildBreadcrumbFromPath(urlPath)
+        setCurrentPath(breadcrumb)
     }
 
     const buildBreadcrumbFromPath = (urlPath: string[]): BreadcrumbItem[] => {
@@ -287,8 +300,8 @@ export default function RegionPage() {
                     <div className="flex items-center gap-4">
 
 
-                        {/* Action Buttons */}
-                        {currentRegion && (
+                        {/* Action Buttons - Only show for regions that provide data services */}
+                        {currentRegion && currentRegion.region.provides_data_services && (
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => setShowQualityModal(true)}
@@ -355,8 +368,8 @@ export default function RegionPage() {
                             </div>
                         )}
 
-                        {/* Data Files */}
-                        {currentRegion && currentRegion.data_files.length > 0 && (
+                        {/* Data Files - Only show for regions that provide data services */}
+                        {currentRegion && currentRegion.region.provides_data_services && currentRegion.data_files.length > 0 && (
                             <div>
                                 <h3 className="text-lg font-medium text-gray-900 mb-4">Available Data Files</h3>
                                 <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
@@ -427,14 +440,18 @@ export default function RegionPage() {
                         )}
 
                         {/* Empty State */}
-                        {currentRegions.length === 0 && (!currentRegion || currentRegion.data_files.length === 0) && (
+                        {currentRegions.length === 0 && (!currentRegion || (currentRegion.region.provides_data_services && currentRegion.data_files.length === 0)) && (
                             <div className="text-center py-12 bg-white rounded-lg shadow-sm">
                                 <Map className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                                 <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                    No data available
+                                    {currentRegion?.region.provides_data_services
+                                        ? "No data available"
+                                        : "Navigation level"}
                                 </h3>
                                 <p className="text-gray-600">
-                                    This region doesn't have any sub-regions or data files available.
+                                    {currentRegion?.region.provides_data_services
+                                        ? "This region doesn't have any sub-regions or data files available."
+                                        : "This level is for navigation only. Data services are available at country and regional levels."}
                                 </p>
                             </div>
                         )}
@@ -462,8 +479,8 @@ export default function RegionPage() {
                 </div>
             </main>
 
-            {/* Modals */}
-            {currentRegion && (
+            {/* Modals - Only show for regions that provide data services */}
+            {currentRegion && currentRegion.region.provides_data_services && (
                 <>
                     <QualityReportModal
                         isOpen={showQualityModal}

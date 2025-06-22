@@ -15,8 +15,12 @@ pub struct Region {
     pub country_code: Option<String>,
     pub geofabrik_url: Option<String>, // URL to Geofabrik download
     pub has_children: bool,
+    pub provides_data_services: bool, // Whether this region offers data processing/download services
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub iso3166_1: Option<Vec<String>>, // ISO 3166-1 alpha-2 codes
+    pub iso3166_2: Option<Vec<String>>, // ISO 3166-2 codes
+    pub urls: Option<GeofabrikUrls>,    // Direct URLs from Geofabrik
 }
 
 /// Administrative levels matching Geofabrik hierarchy
@@ -210,6 +214,46 @@ pub struct QualityMetricsDiff {
     pub feature_changes: HashMap<String, i64>,
 }
 
+/// Geofabrik JSON index structures
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeofabrikIndex {
+    #[serde(rename = "type")]
+    pub feature_type: String, // Should be "FeatureCollection"
+    pub features: Vec<GeofabrikFeature>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeofabrikFeature {
+    #[serde(rename = "type")]
+    pub feature_type: String, // Should be "Feature"
+    pub properties: GeofabrikProperties,
+    pub geometry: Option<serde_json::Value>, // GeoJSON geometry (optional, we might use the smaller index)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeofabrikProperties {
+    pub id: String,
+    pub parent: Option<String>,
+    pub name: String,
+    #[serde(rename = "iso3166-1:alpha2")]
+    pub iso3166_1_alpha2: Option<Vec<String>>,
+    #[serde(rename = "iso3166-2")]
+    pub iso3166_2: Option<Vec<String>>,
+    pub urls: Option<GeofabrikUrls>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeofabrikUrls {
+    pub pbf: Option<String>,
+    pub bz2: Option<String>,
+    pub shp: Option<String>,
+    pub updates: Option<String>,
+    #[serde(rename = "pbf-internal")]
+    pub pbf_internal: Option<String>,
+    pub history: Option<String>,
+    pub taginfo: Option<String>,
+}
+
 impl BoundingBox {
     /// Create a new bounding box
     pub fn new(min_lat: f64, min_lon: f64, max_lat: f64, max_lon: f64) -> Self {
@@ -256,6 +300,11 @@ impl Region {
         bounding_box: BoundingBox,
     ) -> Self {
         let now = Utc::now();
+        let provides_data_services = matches!(
+            admin_level,
+            AdminLevel::Country | AdminLevel::Region | AdminLevel::Subregion
+        );
+
         Self {
             id,
             name,
@@ -267,8 +316,12 @@ impl Region {
             country_code: None,
             geofabrik_url: None,
             has_children: false,
+            provides_data_services,
             created_at: now,
             updated_at: now,
+            iso3166_1: None,
+            iso3166_2: None,
+            urls: None,
         }
     }
 

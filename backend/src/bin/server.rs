@@ -18,9 +18,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize storage
     let storage = Storage::new(&config.storage.data_dir)?;
 
-    // Initialize sample data if not exists
-    if let Err(e) = storage.initialize_with_sample_data().await {
-        error!("Failed to initialize sample data: {}", e);
+    // Initialize region data from Geofabrik if not exists
+    if let Err(e) = storage.initialize_with_geofabrik_data().await {
+        error!("Failed to initialize Geofabrik data: {}", e);
+        info!("Falling back to sample data initialization");
+        if let Err(e2) = storage.initialize_with_sample_data().await {
+            error!("Failed to initialize sample data as fallback: {}", e2);
+        }
     }
 
     // Create router

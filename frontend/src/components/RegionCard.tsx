@@ -51,19 +51,30 @@ export default function RegionCard({ region, isSelected, onSelect }: RegionCardP
                     )}
 
                     <div className="mt-3 space-y-1">
-                        <div className="flex items-center text-sm text-gray-600">
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                            </svg>
-                            {data_files.length} file{data_files.length !== 1 ? 's' : ''} available
-                        </div>
+                        {regionInfo.provides_data_services ? (
+                            <>
+                                <div className="flex items-center text-sm text-gray-600">
+                                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                    </svg>
+                                    {data_files.length} file{data_files.length !== 1 ? 's' : ''} available
+                                </div>
 
-                        {latestFile && (
-                            <div className="flex items-center text-sm text-gray-600">
+                                {latestFile && (
+                                    <div className="flex items-center text-sm text-gray-600">
+                                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        Latest: {formatDate(latestFile.created_at)} • {formatFileSize(latestFile.file_size)}
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div className="flex items-center text-sm text-blue-600">
                                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                                 </svg>
-                                Latest: {formatDate(latestFile.created_at)} • {formatFileSize(latestFile.file_size)}
+                                Navigation level • {region.children.length} sub-region{region.children.length !== 1 ? 's' : ''}
                             </div>
                         )}
                     </div>

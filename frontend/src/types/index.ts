@@ -16,6 +16,9 @@ export interface Region {
     area_km2?: number;
     population?: number;
     country_code?: string;
+    geofabrik_url?: string;
+    has_children: boolean;
+    provides_data_services: boolean;
     created_at: string;
     updated_at: string;
 }

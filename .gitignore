@@ -1,0 +1,230 @@
+# ===================================
+# RUST BACKEND
+# ===================================
+
+# Rust build artifacts
+/backend/target/
+**/*.rs.bk
+*.pdb
+
+# ===================================
+# NODE.JS / NEXT.JS FRONTEND
+# ===================================
+
+# Dependencies
+/frontend/node_modules/
+/frontend/.pnp
+/frontend/.pnp.js
+
+# Next.js build output
+/frontend/.next/
+/frontend/out/
+
+# Production build
+/frontend/build/
+/frontend/dist/
+
+# Runtime data
+/frontend/pids
+/frontend/*.pid
+/frontend/*.seed
+/frontend/*.pid.lock
+
+# Coverage directory used by tools like istanbul
+/frontend/coverage/
+/frontend/.nyc_output
+
+# ESLint cache
+/frontend/.eslintcache
+
+# Next.js cache
+/frontend/.next/
+
+# Nuxt.js build / generate output
+/frontend/.nuxt
+/frontend/dist
+
+# Gatsby files
+/frontend/.cache/
+/frontend/public
+
+# Storybook build outputs
+/frontend/.out
+/frontend/.storybook-out
+
+# ===================================
+# ENVIRONMENT & CONFIG
+# ===================================
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# ===================================
+# DATA & RUNTIME FILES
+# ===================================
+
+# OSM data files (large binary files)
+/backend/data/**/*.osm.pbf
+/backend/data/**/*.osm.xml
+/backend/data/**/*.osm
+/backend/data/**/latest.osm.pbf
+
+# Keep directory structure but ignore large data files
+!/backend/data/.gitkeep
+!/backend/data/*/.gitkeep
+!/backend/data/*/*/.gitkeep
+
+# Temporary files
+/backend/temp/
+*.tmp
+*.temp
+
+# Logs
+*.log
+logs/
+/backend/logs/
+/frontend/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Metadata files (these can be regenerated)
+/backend/data/metadata.json
+
+# Quality reports (can be regenerated)
+/backend/data/reports/
+
+# ===================================
+# DEVELOPMENT TOOLS
+# ===================================
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# ===================================
+# OPERATING SYSTEM
+# ===================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===================================
+# PACKAGE MANAGERS
+# ===================================
+
+# npm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json  # Remove this line if you want to track package-lock.json
+.npm
+
+# Yarn
+.yarn-integrity
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# pnpm
+.pnpm-debug.log*
+
+# ===================================
+# TESTING & COVERAGE
+# ===================================
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output/
+
+# Jest
+.coverage/
+
+# ===================================
+# MISC
+# ===================================
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Archive files
+*.zip
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z

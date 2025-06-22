@@ -1,26 +1,18 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronRight, Download, Globe, Map, BarChart3, Clock, List } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Globe, Map, BarChart3, Clock, ArrowRight, MapPin } from 'lucide-react'
 import { RegionTree } from '@/types'
 import { api } from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import RegionCard from '@/components/RegionCard'
-import RegionMap from '@/components/RegionMap'
-
-interface BreadcrumbItem {
-    id: string
-    name: string
-}
 
 export default function HomePage() {
-    const [regions, setRegions] = useState<RegionTree[]>([])
-    const [currentPath, setCurrentPath] = useState<BreadcrumbItem[]>([])
-    const [selectedRegion, setSelectedRegion] = useState<RegionTree | null>(null)
-    const [loading, setLoading] = useState(true)
+    const router = useRouter()
     const [stats, setStats] = useState<any>(null)
+    const [regions, setRegions] = useState<RegionTree[]>([])
+    const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-    const [viewMode, setViewMode] = useState<'hierarchy' | 'map'>('hierarchy')
 
     useEffect(() => {
         loadRegions()
@@ -31,37 +23,7 @@ export default function HomePage() {
         try {
             setLoading(true)
             const data = await api.getRegions()
-            console.log('Loaded regions data:', data)
             setRegions(data)
-
-            // Initialize with world view - try to find the top-level region
-            let worldRegion = data.find(r => r.region.id === 'world')
-
-            // If no 'world' region, try to find admin_level 0 region
-            if (!worldRegion) {
-                worldRegion = data.find(r => r.region.admin_level === 0)
-            }
-
-            // If still no world region, use the first region with children
-            if (!worldRegion) {
-                worldRegion = data.find(r => r.children && r.children.length > 0)
-            }
-
-            // If still nothing, just use the first region
-            if (!worldRegion && data.length > 0) {
-                worldRegion = data[0]
-            }
-
-            if (worldRegion) {
-                console.log('Selected world region:', worldRegion)
-                setCurrentPath([{ id: worldRegion.region.id, name: worldRegion.region.name }])
-                setSelectedRegion(worldRegion)
-            } else {
-                console.log('No suitable world region found, showing all regions')
-                // If no world region, show all top-level regions
-                setCurrentPath([{ id: 'all', name: 'All Regions' }])
-                setSelectedRegion(null)
-            }
         } catch (err) {
             setError('Failed to load regions')
             console.error('Error loading regions:', err)
@@ -79,86 +41,22 @@ export default function HomePage() {
         }
     }
 
-    const handleRegionSelect = (region: RegionTree) => {
-        setSelectedRegion(region)
+    const handleExploreWorld = () => {
+        // Navigate to world region or first available region
+        const worldRegion = regions.find(r => r.region.id === 'world') ||
+            regions.find(r => r.region.admin_level === "World") ||
+            (regions.length > 0 ? regions[0] : null)
 
-        // Update breadcrumb
-        if (region.region.admin_level === "World") {
-            setCurrentPath([{ id: region.region.id, name: region.region.name }])
-        } else if (region.region.admin_level === "Continent") {
-            setCurrentPath([
-                { id: 'world', name: 'World' },
-                { id: region.region.id, name: region.region.name }
-            ])
-        } else if (region.region.admin_level === "Country") {
-            const continent = regions.find(r =>
-                r.children.some(child => child.region.id === region.region.id)
-            )
-            setCurrentPath([
-                { id: 'world', name: 'World' },
-                ...(continent ? [{ id: continent.region.id, name: continent.region.name }] : []),
-                { id: region.region.id, name: region.region.name }
-            ])
+        if (worldRegion) {
+            router.push(`/region/${worldRegion.region.id}`)
+        } else {
+            // Fallback to a generic path
+            router.push('/region/world')
         }
     }
 
-    const handleBreadcrumbClick = (breadcrumbId: string) => {
-        const region = findRegionById(regions, breadcrumbId)
-        if (region) {
-            handleRegionSelect(region)
-        }
-    }
-
-    const findRegionById = (regionList: RegionTree[], id: string): RegionTree | null => {
-        for (const region of regionList) {
-            if (region.region.id === id) {
-                return region
-            }
-            const found = findRegionById(region.children, id)
-            if (found) {
-                return found
-            }
-        }
-        return null
-    }
-
-    const handleDownload = async (regionId: string, version: string) => {
-        try {
-            const response = await fetch(`/api/download/${regionId}/${version}`)
-            if (!response.ok) {
-                throw new Error('Download failed')
-            }
-
-            const blob = await response.blob()
-            const url = window.URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `${regionId}-${version}.osm.pbf`
-            document.body.appendChild(a)
-            a.click()
-            window.URL.revokeObjectURL(url)
-            document.body.removeChild(a)
-        } catch (err) {
-            console.error('Download failed:', err)
-            alert('Download failed. Please try again.')
-        }
-    }
-
-    const getCurrentRegions = () => {
-        if (!selectedRegion) {
-            // If no selected region, show all top-level regions
-            return regions
-        }
-
-        if (selectedRegion.region.admin_level === "World") {
-            return selectedRegion.children // Show continents
-        } else if (selectedRegion.region.admin_level === "Continent") {
-            return selectedRegion.children // Show countries
-        } else if (selectedRegion.region.admin_level === "Country") {
-            return selectedRegion.children // Show regions/states
-        }
-
-        return []
+    const handleQuickAccess = (regionId: string) => {
+        router.push(`/region/${regionId}`)
     }
 
     if (loading) {
@@ -186,195 +84,151 @@ export default function HomePage() {
         )
     }
 
-    const currentRegions = getCurrentRegions()
-
     return (
-        <div className="min-h-screen bg-gray-50">
-            {/* Header */}
-            <header className="bg-white shadow-sm border-b">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between items-center py-6">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-                                <Globe className="h-8 w-8 text-blue-600" />
-                                RieMap
-                            </h1>
-                            <p className="text-gray-600 mt-1">OpenStreetMap Data Portal</p>
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+            {/* Hero Section */}
+            <div className="bg-white">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+                    <div className="text-center">
+                        <div className="flex justify-center mb-6">
+                            <Globe className="h-16 w-16 text-blue-600" />
                         </div>
+                        <h1 className="text-4xl font-bold text-gray-900 mb-4">
+                            Welcome to RieMap
+                        </h1>
+                        <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+                            Your gateway to refined OpenStreetMap data. Explore regions worldwide,
+                            access quality reports, and download the latest geographic data.
+                        </p>
 
                         {stats && (
-                            <div className="flex items-center gap-6 text-sm text-gray-600">
-                                <div className="flex items-center gap-2">
-                                    <Map className="h-4 w-4" />
-                                    <span>{stats.total_regions} regions</span>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+                                <div className="text-center">
+                                    <div className="flex items-center justify-center mb-2">
+                                        <Map className="h-8 w-8 text-blue-600" />
+                                    </div>
+                                    <div className="text-3xl font-bold text-gray-900">{stats.total_regions}</div>
+                                    <div className="text-gray-600">Regions Available</div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <BarChart3 className="h-4 w-4" />
-                                    <span>{Math.round(stats.total_area_km2?.toLocaleString() || 0)} km²</span>
+                                <div className="text-center">
+                                    <div className="flex items-center justify-center mb-2">
+                                        <BarChart3 className="h-8 w-8 text-green-600" />
+                                    </div>
+                                    <div className="text-3xl font-bold text-gray-900">
+                                        {Math.round(stats.total_area_km2 / 1000000)}M
+                                    </div>
+                                    <div className="text-gray-600">km² Coverage</div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <Clock className="h-4 w-4" />
-                                    <span>Updated daily</span>
+                                <div className="text-center">
+                                    <div className="flex items-center justify-center mb-2">
+                                        <Clock className="h-8 w-8 text-purple-600" />
+                                    </div>
+                                    <div className="text-3xl font-bold text-gray-900">Daily</div>
+                                    <div className="text-gray-600">Updates</div>
                                 </div>
                             </div>
                         )}
-                    </div>
-                </div>
-            </header>
 
-            {/* Breadcrumb */}
-            <div className="bg-white border-b">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <nav className="flex items-center space-x-2 text-sm">
-                        {currentPath.map((item, index) => (
-                            <div key={item.id} className="flex items-center">
-                                {index > 0 && <ChevronRight className="h-4 w-4 text-gray-400 mx-2" />}
-                                <button
-                                    onClick={() => handleBreadcrumbClick(item.id)}
-                                    className={`${index === currentPath.length - 1
-                                        ? 'text-blue-600 font-medium'
-                                        : 'text-gray-500 hover:text-gray-700'
-                                        }`}
-                                >
-                                    {item.name}
-                                </button>
-                            </div>
-                        ))}
-                    </nav>
+                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                            <button
+                                onClick={handleExploreWorld}
+                                className="inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                <Globe className="h-5 w-5 mr-2" />
+                                Explore World
+                                <ArrowRight className="h-5 w-5 ml-2" />
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Main Content */}
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {/* View Mode Toggle */}
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-semibold text-gray-900">
-                        {selectedRegion ? selectedRegion.region.name : 'World'}
-                    </h2>
-                    <div className="flex bg-gray-100 rounded-lg p-1">
-                        <button
-                            onClick={() => setViewMode('hierarchy')}
-                            className={`px-4 py-2 rounded-md flex items-center gap-2 transition-colors ${viewMode === 'hierarchy'
-                                ? 'bg-white text-gray-900 shadow-sm'
-                                : 'text-gray-600 hover:text-gray-900'
-                                }`}
-                        >
-                            <List className="h-4 w-4" />
-                            List
-                        </button>
-                        <button
-                            onClick={() => setViewMode('map')}
-                            className={`px-4 py-2 rounded-md flex items-center gap-2 transition-colors ${viewMode === 'map'
-                                ? 'bg-white text-gray-900 shadow-sm'
-                                : 'text-gray-600 hover:text-gray-900'
-                                }`}
-                        >
-                            <Map className="h-4 w-4" />
-                            Map
-                        </button>
-                    </div>
+            {/* Quick Access Section */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+                <div className="text-center mb-12">
+                    <h2 className="text-3xl font-bold text-gray-900 mb-4">Quick Access</h2>
+                    <p className="text-gray-600">Jump directly to popular regions</p>
                 </div>
 
-                {/* Map View */}
-                {viewMode === 'map' && (
-                    <div className="bg-white rounded-lg shadow-sm mb-8">
-                        <RegionMap
-                            regions={regions}
-                            selectedRegion={selectedRegion}
-                            onRegionSelect={handleRegionSelect}
-                            className="h-96 rounded-lg"
-                        />
-                    </div>
-                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {regions.slice(0, 6).map((region) => (
+                        <div
+                            key={region.region.id}
+                            className="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow cursor-pointer"
+                            onClick={() => handleQuickAccess(region.region.id)}
+                        >
+                            <div className="p-6">
+                                <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                            {region.region.name}
+                                        </h3>
+                                        <p className="text-sm text-gray-600 mb-3">
+                                            {region.region.admin_level}
+                                        </p>
 
-                {/* Current Region Info */}
-                {selectedRegion && (
-                    <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-                        <div className="flex items-start justify-between">
-                            <div>
-                                <h2 className="text-2xl font-bold text-gray-900">
-                                    {selectedRegion.region.name}
-                                </h2>
-                                <p className="text-gray-600 mt-1">
-                                    Administrative Level: {selectedRegion.region.admin_level}
-                                </p>
-                                <div className="flex items-center gap-6 mt-4 text-sm text-gray-600">
-                                    {selectedRegion.region.area_km2 && (
-                                        <span>Area: {selectedRegion.region.area_km2.toLocaleString()} km²</span>
-                                    )}
-                                    {selectedRegion.region.population && (
-                                        <span>Population: {selectedRegion.region.population.toLocaleString()}</span>
-                                    )}
-                                    <span>
-                                        {selectedRegion.children.length} sub-regions
-                                    </span>
-                                    <span>
-                                        {selectedRegion.data_files.length} data files
-                                    </span>
+                                        <div className="space-y-1 text-sm text-gray-500">
+                                            {region.region.area_km2 && (
+                                                <div className="flex items-center gap-2">
+                                                    <MapPin className="h-4 w-4" />
+                                                    <span>{region.region.area_km2.toLocaleString()} km²</span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center gap-2">
+                                                <Map className="h-4 w-4" />
+                                                <span>{region.children.length} sub-regions</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <ArrowRight className="h-5 w-5 text-gray-400" />
                                 </div>
                             </div>
-
-                            {selectedRegion.data_files.length > 0 && (
-                                <div className="flex flex-col gap-2">
-                                    {selectedRegion.data_files.slice(0, 2).map((file) => (
-                                        <button
-                                            key={file.id}
-                                            onClick={() => handleDownload(file.region_id, file.version)}
-                                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                        >
-                                            <Download className="h-4 w-4" />
-                                            <span className="text-sm">
-                                                {file.is_latest ? 'Latest' : file.version}
-                                                {' '}({(file.file_size / 1024 / 1024).toFixed(1)} MB)
-                                            </span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
                         </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Features Section */}
+            <div className="bg-white">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl font-bold text-gray-900 mb-4">Features</h2>
+                        <p className="text-gray-600">Everything you need for OpenStreetMap data</p>
                     </div>
-                )}
 
-                {/* Sub-regions Grid */}
-                {currentRegions.length > 0 && (
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-6">
-                            {selectedRegion?.region.admin_level === "World" && 'Continents'}
-                            {selectedRegion?.region.admin_level === "Continent" && 'Countries'}
-                            {selectedRegion?.region.admin_level === "Country" && 'Regions'}
-                        </h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {currentRegions.map((region) => (
-                                <RegionCard
-                                    key={region.region.id}
-                                    region={region}
-                                    isSelected={selectedRegion?.region.id === region.region.id}
-                                    onSelect={() => handleRegionSelect(region)}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* Empty State */}
-                {currentRegions.length === 0 && selectedRegion && (
-                    <div className="text-center py-12">
-                        <Map className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">
-                            No sub-regions available
-                        </h3>
-                        <p className="text-gray-600">
-                            This region doesn't have any sub-regions to explore.
-                        </p>
-                        {selectedRegion.data_files.length > 0 && (
-                            <p className="text-gray-600 mt-2">
-                                But you can download the data files above.
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div className="text-center">
+                            <div className="bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                                <Map className="h-8 w-8 text-blue-600" />
+                            </div>
+                            <h3 className="text-xl font-semibold text-gray-900 mb-2">Interactive Maps</h3>
+                            <p className="text-gray-600">
+                                Explore regions with our interactive map interface and discover sub-regions easily.
                             </p>
-                        )}
+                        </div>
+
+                        <div className="text-center">
+                            <div className="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                                <BarChart3 className="h-8 w-8 text-green-600" />
+                            </div>
+                            <h3 className="text-xl font-semibold text-gray-900 mb-2">Quality Reports</h3>
+                            <p className="text-gray-600">
+                                Get detailed quality assessments with completeness, accuracy, and freshness scores.
+                            </p>
+                        </div>
+
+                        <div className="text-center">
+                            <div className="bg-purple-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                                <Clock className="h-8 w-8 text-purple-600" />
+                            </div>
+                            <h3 className="text-xl font-semibold text-gray-900 mb-2">Version History</h3>
+                            <p className="text-gray-600">
+                                Compare different versions of data and track changes over time.
+                            </p>
+                        </div>
                     </div>
-                )}
-            </main>
+                </div>
+            </div>
         </div>
     )
 } 

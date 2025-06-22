@@ -118,6 +118,7 @@ export const apiClient = new ApiClient();
 export const api = {
     // Direct function exports for backward compatibility
     getRegions: () => apiClient.getRegions(),
+    getQualityReport: (reportId: string) => apiClient.getQualityReport(reportId),
     getStats: async () => {
         // Mock stats data - replace with actual endpoint when backend supports it
         return {

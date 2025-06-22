@@ -30,6 +30,10 @@ pub fn create_router(storage: Storage) -> Router {
             get(handlers::get_region_boundaries),
         )
         .route(
+            "/regions/:region_id/compare",
+            get(handlers::compare_versions),
+        )
+        .route(
             "/regions/:region_id/process",
             post(handlers::trigger_processing),
         )

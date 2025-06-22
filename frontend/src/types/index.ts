@@ -57,12 +57,19 @@ export interface QualityIssue {
 
 export interface QualityReport {
     id: string;
-    data_file_id: string;
     region_id: string;
-    created_at: string;
-    metrics: QualityMetrics;
-    issues: QualityIssue[];
-    summary: string;
+    report_date: string;
+    completeness_score: number;
+    accuracy_score: number;
+    freshness_score: number;
+    overall_score: number;
+    issues: {
+        missing_tags: number;
+        geometry_errors: number;
+        topology_issues: number;
+        outdated_data: number;
+    };
+    recommendations: string[];
 }
 
 export interface RegionTree {

@@ -148,7 +148,10 @@ export default function RegionMap({ regions, selectedRegion, onRegionSelect, cla
             if (onRegionSelect && e.features && e.features[0]) {
                 const regionId = e.features[0].properties?.id;
                 if (regionId) {
-                    onRegionSelect(regions.find((r: RegionTree) => r.region.id === regionId) as RegionTree);
+                    const foundRegion = regions.find((r: RegionTree) => r.region.id === regionId);
+                    if (foundRegion) {
+                        onRegionSelect(foundRegion);
+                    }
                 }
             }
         });
@@ -181,8 +184,8 @@ export default function RegionMap({ regions, selectedRegion, onRegionSelect, cla
             const response = await fetch('/api/regions');
             const regionsData: RegionTree[] = await response.json();
 
-            // Find continents (admin_level = 1)
-            const continents = regionsData.filter((r: RegionTree) => r.region.admin_level === 1);
+            // Find continents (admin_level = "Continent")
+            const continents = regionsData.filter((r: RegionTree) => r.region.admin_level === "Continent");
 
             // Add continent boundaries
             continents.forEach((continent: RegionTree, index: number) => {
@@ -247,7 +250,10 @@ export default function RegionMap({ regions, selectedRegion, onRegionSelect, cla
                     if (onRegionSelect && e.features && e.features[0]) {
                         const regionId = e.features[0].properties?.id;
                         if (regionId) {
-                            onRegionSelect(regionsData.find((r: RegionTree) => r.region.id === regionId) as RegionTree);
+                            const foundRegion = regionsData.find((r: RegionTree) => r.region.id === regionId);
+                            if (foundRegion) {
+                                onRegionSelect(foundRegion);
+                            }
                         }
                     }
                 });

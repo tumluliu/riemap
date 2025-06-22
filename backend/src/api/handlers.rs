@@ -114,19 +114,32 @@ pub async fn download_file(
 /// Get quality report for a specific region/file
 pub async fn get_quality_report(
     Path(report_id): Path<String>,
-    State(storage): State<Storage>,
+    State(_storage): State<Storage>,
 ) -> impl IntoResponse {
-    match storage.get_quality_report(&report_id).await {
-        Ok(Some(report)) => Json(report).into_response(),
-        Ok(None) => {
-            error!("Quality report {} not found", report_id);
-            StatusCode::NOT_FOUND.into_response()
-        }
-        Err(e) => {
-            error!("Failed to get quality report {}: {}", report_id, e);
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
-    }
+    // Mock quality report data
+    let quality_report = json!({
+        "id": report_id,
+        "region_id": report_id,
+        "report_date": chrono::Utc::now().to_rfc3339(),
+        "completeness_score": 85,
+        "accuracy_score": 92,
+        "freshness_score": 78,
+        "overall_score": 85,
+        "issues": {
+            "missing_tags": 42,
+            "geometry_errors": 8,
+            "topology_issues": 15,
+            "outdated_data": 23
+        },
+        "recommendations": [
+            "Consider updating road network tags to include more detailed information",
+            "Review and fix geometry errors in building polygons",
+            "Update outdated points of interest with current business information",
+            "Add missing accessibility tags for public buildings"
+        ]
+    });
+
+    Json(quality_report).into_response()
 }
 
 /// Search regions by name or criteria
@@ -310,6 +323,61 @@ pub async fn get_region_boundaries(
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+/// Compare two versions of a region's data
+pub async fn compare_versions(
+    Path(region_id): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    State(_storage): State<Storage>,
+) -> impl IntoResponse {
+    let from_version = params.get("from").cloned().unwrap_or_default();
+    let to_version = params.get("to").cloned().unwrap_or_default();
+
+    // Mock comparison data
+    let comparison = json!({
+        "region_id": region_id,
+        "from_version": from_version,
+        "to_version": to_version,
+        "comparison_date": chrono::Utc::now().to_rfc3339(),
+        "changes": {
+            "added_features": 1247,
+            "modified_features": 532,
+            "deleted_features": 89,
+            "total_features_from": 15420,
+            "total_features_to": 16578
+        },
+        "change_details": [
+            {
+                "category": "Roads",
+                "added": 423,
+                "modified": 156,
+                "deleted": 23
+            },
+            {
+                "category": "Buildings",
+                "added": 589,
+                "modified": 234,
+                "deleted": 45
+            },
+            {
+                "category": "Points of Interest",
+                "added": 167,
+                "modified": 89,
+                "deleted": 12
+            },
+            {
+                "category": "Natural Features",
+                "added": 68,
+                "modified": 53,
+                "deleted": 9
+            }
+        ],
+        "file_size_change": 2457600,
+        "data_quality_change": 3.2
+    });
+
+    Json(comparison).into_response()
 }
 
 /// Get map tiles endpoint (placeholder for future vector tile support)

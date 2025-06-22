@@ -23,12 +23,9 @@ export default function RootLayout({
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                             <div className="flex justify-between items-center py-4">
                                 <div className="flex items-center">
-                                    <h1 className="text-2xl font-bold text-gray-900">
-                                        🗺️ RieMap
+                                    <h1 className="text-xl font-semibold text-gray-800">
+                                        OpenStreetMap Data Portal
                                     </h1>
-                                    <span className="ml-2 text-sm text-gray-500">
-                                        Refined OpenStreetMap Data
-                                    </span>
                                 </div>
                                 <nav className="flex space-x-6">
                                     <a href="/" className="text-gray-700 hover:text-primary-600 font-medium">

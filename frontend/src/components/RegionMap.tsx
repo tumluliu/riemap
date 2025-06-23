@@ -180,100 +180,30 @@ export default function RegionMap({ regions, selectedRegion, onRegionSelect, cla
         if (!map.current) return;
 
         try {
-            // Load continent data from the API
-            const response = await fetch('/api/regions');
-            const regionsData: RegionTree[] = await response.json();
+            // For world view, just fit to world bounds without drawing continent rectangles
+            // This gives a clean world view without the messy overlapping bounding boxes
 
-            // Find continents (admin_level = "Continent")
-            const continents = regionsData.filter((r: RegionTree) => r.region.admin_level === "Continent");
-
-            // Add continent boundaries
-            continents.forEach((continent: RegionTree, index: number) => {
-                const bbox = continent.region.bounding_box;
-                const coordinates = [
-                    [
-                        [bbox.min_lon, bbox.min_lat],
-                        [bbox.max_lon, bbox.min_lat],
-                        [bbox.max_lon, bbox.max_lat],
-                        [bbox.min_lon, bbox.max_lat],
-                        [bbox.min_lon, bbox.min_lat]
-                    ]
-                ];
-
-                const sourceId = `continent-${continent.region.id}`;
-
-                map.current!.addSource(sourceId, {
-                    type: 'geojson',
-                    data: {
-                        type: 'Feature',
-                        properties: {
-                            id: continent.region.id,
-                            name: continent.region.name
-                        },
-                        geometry: {
-                            type: 'Polygon',
-                            coordinates
-                        }
-                    }
-                });
-
-                // Different colors for different continents
-                const colors = [
-                    '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4',
-                    '#ffeaa7', '#dda0dd', '#ffa07a'
-                ];
-                const color = colors[index % colors.length];
-
-                map.current!.addLayer({
-                    id: `${sourceId}-fill`,
-                    type: 'fill',
-                    source: sourceId,
-                    paint: {
-                        'fill-color': color,
-                        'fill-opacity': 0.2
-                    }
-                });
-
-                map.current!.addLayer({
-                    id: `${sourceId}-line`,
-                    type: 'line',
-                    source: sourceId,
-                    paint: {
-                        'line-color': color,
-                        'line-width': 2,
-                        'line-opacity': 0.6
-                    }
-                });
-
-                // Add click handler
-                map.current!.on('click', `${sourceId}-fill`, (e) => {
-                    if (onRegionSelect && e.features && e.features[0]) {
-                        const regionId = e.features[0].properties?.id;
-                        if (regionId) {
-                            const foundRegion = regionsData.find((r: RegionTree) => r.region.id === regionId);
-                            if (foundRegion) {
-                                onRegionSelect(foundRegion);
-                            }
-                        }
-                    }
-                });
-
-                // Hover effects
-                map.current!.on('mouseenter', `${sourceId}-fill`, () => {
-                    if (map.current) {
-                        map.current.getCanvas().style.cursor = 'pointer';
-                    }
-                });
-
-                map.current!.on('mouseleave', `${sourceId}-fill`, () => {
-                    if (map.current) {
-                        map.current.getCanvas().style.cursor = '';
-                    }
-                });
+            // Fit map to show the entire world
+            map.current.fitBounds([
+                [-180, -85], // Southwest corner (min lon, min lat)
+                [180, 85]    // Northeast corner (max lon, max lat)
+            ], {
+                padding: 20,
+                maxZoom: 4 // Prevent zooming in too much for world view
             });
 
         } catch (error) {
-            console.error('Failed to load continent boundaries:', error);
+            console.error('Failed to load world view:', error);
+            // Fallback to world bounds if anything fails
+            if (map.current) {
+                map.current.fitBounds([
+                    [-180, -85],
+                    [180, 85]
+                ], {
+                    padding: 20,
+                    maxZoom: 4
+                });
+            }
         }
     };
 

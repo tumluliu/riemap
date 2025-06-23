@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ChevronRight, Download, Map, BarChart3, List, GitCompare, ArrowLeft } from 'lucide-react'
 import { RegionTree } from '@/types'
@@ -20,11 +20,15 @@ interface BreadcrumbItem {
 export default function RegionPage() {
     const params = useParams()
     const router = useRouter()
-    const path = Array.isArray(params.path)
-        ? params.path
-        : params.path
-            ? [params.path]
-            : []
+
+    // Memoize path calculation to prevent infinite loops
+    const path = useMemo(() => {
+        return Array.isArray(params.path)
+            ? params.path
+            : params.path
+                ? [params.path]
+                : []
+    }, [params.path])
 
     const [regions, setRegions] = useState<RegionTree[]>([])
     const [currentRegion, setCurrentRegion] = useState<RegionTree | null>(null)
@@ -33,16 +37,6 @@ export default function RegionPage() {
     const [error, setError] = useState<string | null>(null)
     const [showQualityModal, setShowQualityModal] = useState(false)
     const [showVersionModal, setShowVersionModal] = useState(false)
-
-    useEffect(() => {
-        loadRegions()
-    }, [])
-
-    useEffect(() => {
-        if (regions.length > 0) {
-            navigateToPath(path)
-        }
-    }, [regions, path])
 
     const loadRegions = async () => {
         try {
@@ -58,7 +52,70 @@ export default function RegionPage() {
         }
     }
 
-    const navigateToPath = async (urlPath: string[]) => {
+    // Memoize findRegionById to prevent recreating it on every render
+    const findRegionById = useCallback((regionList: RegionTree[], id: string): RegionTree | null => {
+        for (const region of regionList) {
+            if (region.region.id === id) {
+                return region
+            }
+            const found = findRegionById(region.children, id)
+            if (found) {
+                return found
+            }
+        }
+        return null
+    }, [])
+
+    const buildCompleteHierarchy = useCallback((targetRegion: RegionTree): BreadcrumbItem[] => {
+        const hierarchy: BreadcrumbItem[] = []
+
+        // Build path from target region back to root
+        const buildPath = (region: RegionTree, path: string[] = []): string[] => {
+            const newPath = [region.region.id, ...path]
+
+            if (region.region.parent_id) {
+                const parent = findRegionById(regions, region.region.parent_id)
+                if (parent) {
+                    return buildPath(parent, newPath)
+                }
+            }
+
+            return newPath
+        }
+
+        const fullPath = buildPath(targetRegion)
+
+        // Convert to breadcrumb items
+        for (let i = 0; i < fullPath.length; i++) {
+            const regionId = fullPath[i]
+            const region = findRegionById(regions, regionId)
+            if (region) {
+                hierarchy.push({
+                    id: region.region.id,
+                    name: region.region.name,
+                    path: `/region/${fullPath.slice(0, i + 1).join('/')}`
+                })
+            }
+        }
+
+        return hierarchy
+    }, [regions, findRegionById])
+
+    const buildBreadcrumbFromPath = useCallback((urlPath: string[]): BreadcrumbItem[] => {
+        if (!urlPath || urlPath.length === 0) return []
+
+        // Get the target region (last in path)
+        const targetRegionId = urlPath[urlPath.length - 1]
+        const targetRegion = findRegionById(regions, targetRegionId)
+
+        if (!targetRegion) return []
+
+        // Build the complete hierarchy from the target region back to root
+        return buildCompleteHierarchy(targetRegion)
+    }, [regions, findRegionById, buildCompleteHierarchy])
+
+    // Memoize navigateToPath to prevent recreating it on every render
+    const navigateToPath = useCallback(async (urlPath: string[]) => {
         if (!urlPath || urlPath.length === 0) {
             // Root - show all top-level regions (continents)
             setCurrentRegion(null)
@@ -93,81 +150,19 @@ export default function RegionPage() {
         // Build breadcrumb path
         const breadcrumb = buildBreadcrumbFromPath(urlPath)
         setCurrentPath(breadcrumb)
-    }
+    }, [regions, findRegionById, buildBreadcrumbFromPath, router])
 
-    const buildBreadcrumbFromPath = (urlPath: string[]): BreadcrumbItem[] => {
-        if (!urlPath || urlPath.length === 0) return []
+    useEffect(() => {
+        loadRegions()
+    }, [])
 
-        // Get the target region (last in path)
-        const targetRegionId = urlPath[urlPath.length - 1]
-        const targetRegion = findRegionById(regions, targetRegionId)
-
-        if (!targetRegion) return []
-
-        // Build the complete hierarchy from the target region back to root
-        return buildCompleteHierarchy(targetRegion)
-    }
-
-    const buildCompleteHierarchy = (targetRegion: RegionTree): BreadcrumbItem[] => {
-        const hierarchy: BreadcrumbItem[] = []
-
-        // Build path from target region back to root
-        const buildPath = (region: RegionTree, path: string[] = []): string[] => {
-            const newPath = [region.region.id, ...path]
-
-            if (region.region.parent_id) {
-                const parent = findRegionById(regions, region.region.parent_id)
-                if (parent) {
-                    return buildPath(parent, newPath)
-                }
-            }
-
-            return newPath
+    useEffect(() => {
+        if (regions.length > 0) {
+            navigateToPath(path)
         }
+    }, [regions, path, navigateToPath])
 
-        const fullPath = buildPath(targetRegion)
-
-        // Convert to breadcrumb items
-        for (let i = 0; i < fullPath.length; i++) {
-            const regionId = fullPath[i]
-            const region = findRegionById(regions, regionId)
-            if (region) {
-                hierarchy.push({
-                    id: region.region.id,
-                    name: region.region.name,
-                    path: `/region/${fullPath.slice(0, i + 1).join('/')}`
-                })
-            }
-        }
-
-        return hierarchy
-    }
-
-    const findRegionById = (regionList: RegionTree[], id: string): RegionTree | null => {
-        for (const region of regionList) {
-            if (region.region.id === id) {
-                return region
-            }
-            const found = findRegionById(region.children, id)
-            if (found) {
-                return found
-            }
-        }
-        return null
-    }
-
-    const handleRegionSelect = (region: RegionTree) => {
-        if (!region || !region.region) {
-            console.error('Invalid region data:', region)
-            return
-        }
-
-        // Build full hierarchical path for the region
-        const fullPath = buildRegionPath(region)
-        router.push(`/region/${fullPath.join('/')}`)
-    }
-
-    const buildRegionPath = (region: RegionTree): string[] => {
+    const buildRegionPath = useCallback((region: RegionTree): string[] => {
         const path: string[] = []
 
         const buildPath = (currentRegion: RegionTree): void => {
@@ -182,6 +177,17 @@ export default function RegionPage() {
 
         buildPath(region)
         return path
+    }, [regions, findRegionById])
+
+    const handleRegionSelect = (region: RegionTree) => {
+        if (!region || !region.region) {
+            console.error('Invalid region data:', region)
+            return
+        }
+
+        // Build full hierarchical path for the region
+        const fullPath = buildRegionPath(region)
+        router.push(`/region/${fullPath.join('/')}`)
     }
 
     const getCurrentRegions = () => {

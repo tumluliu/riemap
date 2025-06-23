@@ -29,15 +29,15 @@ impl Storage {
 
     /// Initialize storage with Geofabrik region hierarchy from their official JSON index
     pub async fn initialize_with_geofabrik_data(&self) -> Result<()> {
-        info!("Fetching Geofabrik region hierarchy from official JSON index");
+        info!("Fetching Geofabrik region hierarchy from official JSON index with geometries");
 
-        // Fetch the Geofabrik index (using the smaller version without geometries)
-        let geofabrik_url = "https://download.geofabrik.de/index-v1-nogeom.json";
+        // Use the full geometry version to get actual bounding boxes
+        let geofabrik_url = "https://download.geofabrik.de/index-v1.json";
 
         let client = reqwest::Client::new();
         let response = client
             .get(geofabrik_url)
-            .timeout(std::time::Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(60)) // Increased timeout for larger file
             .send()
             .await?;
 
@@ -77,15 +77,32 @@ impl Storage {
             }
         }
 
+        // Build a map of all regions for easier lookup
+        let mut region_map: std::collections::HashMap<String, GeofabrikProperties> =
+            std::collections::HashMap::new();
+        for feature in &index.features {
+            region_map.insert(feature.properties.id.clone(), feature.properties.clone());
+        }
+
+        // Multi-pass admin level determination
+        let admin_levels = self.determine_admin_levels_multi_pass(&region_map);
+
         for feature in index.features {
             let props = feature.properties;
 
-            // Determine admin level based on Geofabrik hierarchy structure
-            let admin_level = self.determine_admin_level(&props.id, &props.parent);
+            // Get admin level from our multi-pass analysis
+            let admin_level = admin_levels
+                .get(&props.id)
+                .cloned()
+                .unwrap_or(AdminLevel::Subregion);
 
-            // Create bounding box - we'll use a default since we're using the no-geom version
-            // In a real implementation, you might want to fetch the full version or store known bboxes
-            let bounding_box = self.estimate_bounding_box(&props.id, &props.parent);
+            // Extract bounding box from geometry if available, otherwise use fallback
+            let bounding_box = if let Some(ref geometry) = feature.geometry {
+                self.extract_bounding_box_from_geometry(geometry)
+                    .unwrap_or_else(|| self.estimate_bounding_box(&props.id, &props.parent))
+            } else {
+                self.estimate_bounding_box(&props.id, &props.parent)
+            };
 
             // Determine if this region provides data services
             let provides_data_services = props
@@ -130,44 +147,55 @@ impl Storage {
         Ok(regions)
     }
 
-    /// Determine admin level based on Geofabrik ID and parent structure
-    fn determine_admin_level(&self, id: &str, parent: &Option<String>) -> AdminLevel {
-        match parent {
-            None => AdminLevel::World, // Root level regions (continents)
-            Some(parent_id) => {
-                // Check if parent is a continent (no parent itself)
-                if self.is_continent_id(parent_id) {
-                    AdminLevel::Country
-                } else if self.is_country_id(parent_id) {
-                    AdminLevel::Region
-                } else {
-                    // Could be subregion if parent is a region
-                    AdminLevel::Subregion
+    /// Determine admin levels using multi-pass analysis of the actual hierarchy
+    fn determine_admin_levels_multi_pass(
+        &self,
+        region_map: &std::collections::HashMap<String, GeofabrikProperties>,
+    ) -> std::collections::HashMap<String, AdminLevel> {
+        let mut admin_levels = std::collections::HashMap::new();
+
+        // Step 1: Find continents (regions with no parent)
+        for (id, props) in region_map {
+            if props.parent.is_none() {
+                admin_levels.insert(id.clone(), AdminLevel::Continent);
+            }
+        }
+
+        // Step 2: Find countries (regions whose parent is a continent)
+        for (id, props) in region_map {
+            if let Some(ref parent_id) = props.parent {
+                if admin_levels.get(parent_id) == Some(&AdminLevel::Continent) {
+                    admin_levels.insert(id.clone(), AdminLevel::Country);
                 }
             }
         }
-    }
 
-    /// Check if an ID represents a continent
-    fn is_continent_id(&self, id: &str) -> bool {
-        matches!(
-            id,
-            "africa"
-                | "antarctica"
-                | "asia"
-                | "australia-oceania"
-                | "central-america"
-                | "europe"
-                | "north-america"
-                | "south-america"
-        )
-    }
+        // Step 3: Find regions (regions whose parent is a country)
+        for (id, props) in region_map {
+            if let Some(ref parent_id) = props.parent {
+                if admin_levels.get(parent_id) == Some(&AdminLevel::Country) {
+                    admin_levels.insert(id.clone(), AdminLevel::Region);
+                }
+            }
+        }
 
-    /// Check if an ID represents a country (has a continent as parent)
-    fn is_country_id(&self, id: &str) -> bool {
-        // This is a heuristic - in practice you'd check the actual parent relationships
-        // from the fetched data, but for now we'll use some common patterns
-        !self.is_continent_id(id) && !id.contains("/")
+        // Step 4: Find subregions (regions whose parent is a region)
+        for (id, props) in region_map {
+            if let Some(ref parent_id) = props.parent {
+                if admin_levels.get(parent_id) == Some(&AdminLevel::Region) {
+                    admin_levels.insert(id.clone(), AdminLevel::Subregion);
+                }
+            }
+        }
+
+        // Any remaining regions without assigned levels get the deepest level
+        for (id, _) in region_map {
+            if !admin_levels.contains_key(id) {
+                admin_levels.insert(id.clone(), AdminLevel::Subregion);
+            }
+        }
+
+        admin_levels
     }
 
     /// Estimate bounding box for regions (since we're using the no-geometry version)
@@ -253,12 +281,57 @@ impl Storage {
         regions: &[Region],
         parent_id: Option<&str>,
     ) -> Result<Vec<RegionTree>> {
-        let mut tree = Vec::new();
+        // Build a map of region_id -> Region for fast lookup
+        let region_map: std::collections::HashMap<String, &Region> =
+            regions.iter().map(|r| (r.id.clone(), r)).collect();
 
-        // Find direct children first
+        // Build a map of parent_id -> Vec<child_regions>
+        let mut children_map: std::collections::HashMap<String, Vec<&Region>> =
+            std::collections::HashMap::new();
         for region in regions {
-            if region.parent_id.as_deref() == parent_id {
+            if let Some(ref parent) = region.parent_id {
+                children_map
+                    .entry(parent.clone())
+                    .or_insert_with(Vec::new)
+                    .push(region);
+            }
+        }
+
+        // Build the hierarchy iteratively
+        self.build_tree_iterative(&region_map, &children_map, parent_id)
+            .await
+    }
+
+    /// Build tree iteratively to avoid async recursion issues
+    fn build_tree_iterative<'a>(
+        &'a self,
+        region_map: &'a std::collections::HashMap<String, &'a Region>,
+        children_map: &'a std::collections::HashMap<String, Vec<&'a Region>>,
+        parent_id: Option<&'a str>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<RegionTree>>> + 'a + Send>>
+    {
+        Box::pin(async move {
+            let mut result = Vec::new();
+
+            // Get direct children
+            let direct_children = if let Some(parent) = parent_id {
+                children_map.get(parent).cloned().unwrap_or_default()
+            } else {
+                // Root level - find regions with no parent
+                region_map
+                    .values()
+                    .filter(|r| r.parent_id.is_none())
+                    .cloned()
+                    .collect()
+            };
+
+            for &region in &direct_children {
                 let data_files = self.get_region_files(&region.id).await?;
+
+                // Recursively build children
+                let children = self
+                    .build_tree_iterative(region_map, children_map, Some(&region.id))
+                    .await?;
 
                 let download_stats = DownloadStats {
                     total_downloads: 0,
@@ -270,85 +343,24 @@ impl Storage {
                         .sum(),
                 };
 
-                tree.push(RegionTree {
+                result.push(RegionTree {
                     region: region.clone(),
-                    children: Vec::new(), // Will be filled in next step
+                    children,
                     data_files,
                     download_stats,
                 });
             }
-        }
 
-        // Build children for each node (3 levels deep)
-        for tree_node in &mut tree {
-            // Level 1: Direct children
-            for region in regions {
-                if region.parent_id.as_deref() == Some(&tree_node.region.id) {
-                    let data_files = self.get_region_files(&region.id).await?;
-
-                    // Level 2: Grandchildren
-                    let mut grandchildren = Vec::new();
-                    for grandchild_region in regions {
-                        if grandchild_region.parent_id.as_deref() == Some(&region.id) {
-                            let grandchild_data_files =
-                                self.get_region_files(&grandchild_region.id).await?;
-
-                            let grandchild_download_stats = DownloadStats {
-                                total_downloads: 0,
-                                last_updated: grandchild_region.updated_at,
-                                file_count: grandchild_data_files.len(),
-                                total_size_mb: grandchild_data_files
-                                    .iter()
-                                    .map(|f| f.file_size as f64 / 1_048_576.0)
-                                    .sum(),
-                            };
-
-                            grandchildren.push(RegionTree {
-                                region: grandchild_region.clone(),
-                                children: Vec::new(),
-                                data_files: grandchild_data_files,
-                                download_stats: grandchild_download_stats,
-                            });
-                        }
-                    }
-
-                    let child_download_stats = DownloadStats {
-                        total_downloads: 0,
-                        last_updated: region.updated_at,
-                        file_count: data_files.len(),
-                        total_size_mb: data_files
-                            .iter()
-                            .map(|f| f.file_size as f64 / 1_048_576.0)
-                            .sum(),
-                    };
-
-                    tree_node.children.push(RegionTree {
-                        region: region.clone(),
-                        children: grandchildren,
-                        data_files,
-                        download_stats: child_download_stats,
-                    });
-                }
-            }
-
-            // Sort children
-            tree_node.children.sort_by(|a, b| {
+            // Sort by admin level and then by name
+            result.sort_by(|a, b| {
                 a.region
                     .admin_level_num()
                     .cmp(&b.region.admin_level_num())
                     .then_with(|| a.region.name.cmp(&b.region.name))
             });
-        }
 
-        // Sort by admin level and then by name
-        tree.sort_by(|a, b| {
-            a.region
-                .admin_level_num()
-                .cmp(&b.region.admin_level_num())
-                .then_with(|| a.region.name.cmp(&b.region.name))
-        });
-
-        Ok(tree)
+            Ok(result)
+        })
     }
 
     /// Get specific region
@@ -569,5 +581,89 @@ impl Storage {
         }
 
         Ok(None)
+    }
+
+    /// Extract bounding box from GeoJSON geometry
+    fn extract_bounding_box_from_geometry(
+        &self,
+        geometry: &serde_json::Value,
+    ) -> Option<BoundingBox> {
+        match geometry.get("type")?.as_str()? {
+            "Polygon" => {
+                let coordinates = geometry.get("coordinates")?.as_array()?;
+                if let Some(outer_ring) = coordinates.get(0)?.as_array() {
+                    self.calculate_bbox_from_coordinates(outer_ring)
+                } else {
+                    None
+                }
+            }
+            "MultiPolygon" => {
+                let coordinates = geometry.get("coordinates")?.as_array()?;
+                let mut all_coords = Vec::new();
+
+                for polygon in coordinates {
+                    if let Some(rings) = polygon.as_array() {
+                        if let Some(outer_ring) = rings.get(0)?.as_array() {
+                            all_coords.extend(outer_ring.iter().cloned());
+                        }
+                    }
+                }
+
+                self.calculate_bbox_from_coordinates(&all_coords)
+            }
+            "Point" => {
+                let coordinates = geometry.get("coordinates")?.as_array()?;
+                if coordinates.len() >= 2 {
+                    let lon = coordinates[0].as_f64()?;
+                    let lat = coordinates[1].as_f64()?;
+                    // For points, create a small bounding box
+                    Some(BoundingBox::new(
+                        lat - 0.001,
+                        lon - 0.001,
+                        lat + 0.001,
+                        lon + 0.001,
+                    ))
+                } else {
+                    None
+                }
+            }
+            _ => None, // Other geometry types not supported yet
+        }
+    }
+
+    /// Calculate bounding box from coordinate array
+    fn calculate_bbox_from_coordinates(
+        &self,
+        coordinates: &[serde_json::Value],
+    ) -> Option<BoundingBox> {
+        let mut min_lat = f64::INFINITY;
+        let mut max_lat = f64::NEG_INFINITY;
+        let mut min_lon = f64::INFINITY;
+        let mut max_lon = f64::NEG_INFINITY;
+
+        for coord in coordinates {
+            if let Some(coord_array) = coord.as_array() {
+                if coord_array.len() >= 2 {
+                    if let (Some(lon), Some(lat)) =
+                        (coord_array[0].as_f64(), coord_array[1].as_f64())
+                    {
+                        min_lat = min_lat.min(lat);
+                        max_lat = max_lat.max(lat);
+                        min_lon = min_lon.min(lon);
+                        max_lon = max_lon.max(lon);
+                    }
+                }
+            }
+        }
+
+        if min_lat != f64::INFINITY
+            && max_lat != f64::NEG_INFINITY
+            && min_lon != f64::INFINITY
+            && max_lon != f64::NEG_INFINITY
+        {
+            Some(BoundingBox::new(min_lat, min_lon, max_lat, max_lon))
+        } else {
+            None
+        }
     }
 }

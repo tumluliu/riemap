@@ -42,17 +42,9 @@ export default function HomePage() {
     }
 
     const handleExploreWorld = () => {
-        // Navigate to world region or first available region
-        const worldRegion = regions.find(r => r.region.id === 'world') ||
-            regions.find(r => r.region.admin_level === "World") ||
-            (regions.length > 0 ? regions[0] : null)
-
-        if (worldRegion) {
-            router.push(`/region/${worldRegion.region.id}`)
-        } else {
-            // Fallback to a generic path
-            router.push('/region/world')
-        }
+        // Navigate to the root regions view (no specific region)
+        // This will show all continents at the top level
+        router.push('/region')
     }
 
     const handleQuickAccess = (regionId: string) => {
